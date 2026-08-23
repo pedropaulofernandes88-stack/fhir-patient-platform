@@ -3,13 +3,15 @@
 ## Implementado
 
 - JSON FHIR versão `4.0.1`;
-- Bundles `transaction`, `batch` e `collection`;
+- Bundles `transaction` e `collection` administrativa;
 - recursos `Patient`, `Encounter`, `Condition`, `Observation`,
   `MedicationRequest`, `Procedure` e `Immunization`;
 - leitura por tipo e ID;
 - busca por paciente, código, `_count` e `_offset`;
-- respostas `Bundle` dos tipos `transaction-response`, `batch-response` e
-  `searchset`;
+- respostas `Bundle` dos tipos `transaction-response`, `history` e `searchset`;
+- `read`, `vread`, histórico por instância e ETag;
+- resolução de referências por `fullUrl`, inclusive `urn:uuid`;
+- controle otimista opcional por `request.ifMatch` em atualizações;
 - erros de validação no formato `OperationOutcome`;
 - metadados básicos em `CapabilityStatement`.
 
@@ -18,18 +20,18 @@
 - o documento de entrada deve ser um `Bundle` reconhecido;
 - cada entrada deve ter recurso, tipo suportado e ID válido;
 - identidades e `fullUrl` não podem se repetir no mesmo Bundle;
-- entradas de transaction/batch devem conter `request`;
+- entradas de `transaction` devem conter `request.method` e `request.url` coerentes;
 - todo recurso clínico deve referenciar um `Patient` existente ou presente no Bundle;
 - datas e códigos principais são normalizados para os índices de consulta.
 
 ## Deliberadamente fora do escopo
 
 - validação integral dos esquemas e invariantes oficiais;
-- perfis nacionais, `StructureDefinition` e `ImplementationGuide`;
-- resolução de referências condicionais ou UUIDs entre entradas;
+- validação de perfis nacionais, `StructureDefinition` e `ImplementationGuide`;
+- resolução de referências condicionais;
 - terminologia remota e validação de `ValueSet`/`CodeSystem`;
-- operações `$`, `history`, `vread`, `patch` e busca encadeada;
-- semântica completa de transaction condicional e controle de concorrência;
+- operações `$`, `patch`, `delete` e busca encadeada;
+- semântica completa de transações condicionais, `batch` e ETags HTTP condicionais;
 - conformidade ou certificação de servidor FHIR.
 
 As escolhas seguem como referência a especificação oficial de

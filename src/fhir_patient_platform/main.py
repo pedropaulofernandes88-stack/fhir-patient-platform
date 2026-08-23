@@ -14,10 +14,12 @@ from .fhir import FHIR_VERSION, FhirValidationError, operation_outcome
 from .schemas import AuditEventRead, ImportSummary, PatientSummary, TimelineEvent
 from .service import (
     get_resource,
+    get_resource_version,
     import_bundle,
     list_audit_events,
     list_patients,
     patient_timeline,
+    resource_history,
     search_resources,
 )
 
@@ -72,7 +74,12 @@ def create_app(database_url: str | None = None) -> FastAPI:
                     "resource": [
                         {
                             "type": resource_type,
-                            "interaction": [{"code": "read"}, {"code": "search-type"}],
+                            "interaction": [
+                                {"code": "read"},
+                                {"code": "vread"},
+                                {"code": "history-instance"},
+                                {"code": "search-type"},
+                            ],
                         }
                         for resource_type in [
                             "Patient",
@@ -92,18 +99,13 @@ def create_app(database_url: str | None = None) -> FastAPI:
     def fhir_transaction(
         bundle: Annotated[dict[str, Any], Body()], session: SessionDependency
     ) -> JSONResponse:
-        if bundle.get("type") not in {"transaction", "batch"}:
-            raise FhirValidationError("POST /fhir aceita Bundle transaction ou batch.")
+        if bundle.get("type") != "transaction":
+            raise FhirValidationError("POST /fhir aceita apenas Bundle transaction.")
         result = import_bundle(session, bundle)
-        response_type = (
-            "transaction-response"
-            if result.summary.bundle_type == "transaction"
-            else "batch-response"
-        )
         return JSONResponse(
             content={
                 "resourceType": "Bundle",
-                "type": response_type,
+                "type": "transaction-response",
                 "entry": result.response_entries,
             },
             media_type="application/fhir+json",
@@ -147,7 +149,49 @@ def create_app(database_url: str | None = None) -> FastAPI:
                 ),
                 media_type="application/fhir+json",
             )
-        return JSONResponse(content=resource, media_type="application/fhir+json")
+        return JSONResponse(
+            content=resource,
+            media_type="application/fhir+json",
+            headers={"ETag": f'W/"{resource["meta"]["versionId"]}"'},
+        )
+
+    @application.get("/fhir/{resource_type}/{resource_id}/_history")
+    def fhir_history(
+        resource_type: str, resource_id: str, session: SessionDependency
+    ) -> JSONResponse:
+        bundle = resource_history(session, resource_type, resource_id)
+        if bundle["total"] == 0:
+            return JSONResponse(
+                status_code=404,
+                content=operation_outcome(
+                    f"Historico nao encontrado: {resource_type}/{resource_id}.", "not-found"
+                ),
+                media_type="application/fhir+json",
+            )
+        return JSONResponse(content=bundle, media_type="application/fhir+json")
+
+    @application.get("/fhir/{resource_type}/{resource_id}/_history/{version_id}")
+    def fhir_vread(
+        resource_type: str,
+        resource_id: str,
+        version_id: int,
+        session: SessionDependency,
+    ) -> JSONResponse:
+        resource = get_resource_version(session, resource_type, resource_id, version_id)
+        if resource is None:
+            return JSONResponse(
+                status_code=404,
+                content=operation_outcome(
+                    f"Versao nao encontrada: {resource_type}/{resource_id}/{version_id}.",
+                    "not-found",
+                ),
+                media_type="application/fhir+json",
+            )
+        return JSONResponse(
+            content=resource,
+            media_type="application/fhir+json",
+            headers={"ETag": f'W/"{version_id}"'},
+        )
 
     @application.get("/api/patients", response_model=list[PatientSummary])
     def patients(session: SessionDependency) -> list[PatientSummary]:

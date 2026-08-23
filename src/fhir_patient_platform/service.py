@@ -18,7 +18,7 @@ from .fhir import (
     patient_display,
     prepare_bundle,
 )
-from .models import AuditEvent, FhirResource
+from .models import AuditEvent, FhirResource, FhirResourceVersion
 from .schemas import AuditEventRead, ImportSummary, PatientSummary, TimelineEvent
 
 
@@ -39,6 +39,15 @@ def resource_payload(row: FhirResource) -> dict[str, Any]:
     meta = dict(payload.get("meta") or {})
     meta["versionId"] = str(row.version_id)
     meta["lastUpdated"] = _iso_datetime(row.updated_at)
+    payload["meta"] = meta
+    return payload
+
+
+def version_payload(row: FhirResourceVersion) -> dict[str, Any]:
+    payload = deepcopy(row.payload)
+    meta = dict(payload.get("meta") or {})
+    meta["versionId"] = str(row.version_id)
+    meta["lastUpdated"] = _iso_datetime(row.recorded_at)
     payload["meta"] = meta
     return payload
 
@@ -101,6 +110,11 @@ def import_bundle(session: Session, bundle: dict[str, Any]) -> ImportResult:
             )
         )
         if row is None:
+            if resource.method == "PUT" and resource.if_match:
+                raise FhirValidationError(
+                    f"If-Match nao pode atualizar recurso inexistente: "
+                    f"{resource.resource_type}/{resource.resource_id}."
+                )
             row = FhirResource(
                 resource_type=resource.resource_type,
                 resource_id=resource.resource_id,
@@ -117,6 +131,12 @@ def import_bundle(session: Session, bundle: dict[str, Any]) -> ImportResult:
             status = "201 Created"
             created += 1
         else:
+            expected_etag = f'W/"{row.version_id}"'
+            if resource.if_match and resource.if_match != expected_etag:
+                raise FhirValidationError(
+                    f"Conflito de versao em {resource.resource_type}/{resource.resource_id}: "
+                    f"If-Match esperado {expected_etag}."
+                )
             row.patient_id = resource.patient_id
             row.code_system = resource.code_system
             row.code_value = resource.code_value
@@ -126,6 +146,16 @@ def import_bundle(session: Session, bundle: dict[str, Any]) -> ImportResult:
             row.updated_at = now
             status = "200 OK"
             updated += 1
+        session.flush()
+        session.add(
+            FhirResourceVersion(
+                resource_type=resource.resource_type,
+                resource_id=resource.resource_id,
+                version_id=row.version_id,
+                payload=deepcopy(resource.payload),
+                recorded_at=now,
+            )
+        )
         response_entries.append(
             {
                 "response": {
@@ -171,6 +201,48 @@ def get_resource(session: Session, resource_type: str, resource_id: str) -> dict
         )
     )
     return resource_payload(row) if row else None
+
+
+def get_resource_version(
+    session: Session, resource_type: str, resource_id: str, version_id: int
+) -> dict[str, Any] | None:
+    row = session.scalar(
+        select(FhirResourceVersion).where(
+            FhirResourceVersion.resource_type == resource_type,
+            FhirResourceVersion.resource_id == resource_id,
+            FhirResourceVersion.version_id == version_id,
+        )
+    )
+    return version_payload(row) if row else None
+
+
+def resource_history(session: Session, resource_type: str, resource_id: str) -> dict[str, Any]:
+    rows = session.scalars(
+        select(FhirResourceVersion)
+        .where(
+            FhirResourceVersion.resource_type == resource_type,
+            FhirResourceVersion.resource_id == resource_id,
+        )
+        .order_by(FhirResourceVersion.version_id.desc())
+    ).all()
+    return {
+        "resourceType": "Bundle",
+        "type": "history",
+        "total": len(rows),
+        "entry": [
+            {
+                "fullUrl": f"/fhir/{resource_type}/{resource_id}/_history/{row.version_id}",
+                "resource": version_payload(row),
+                "request": {"method": "PUT", "url": f"{resource_type}/{resource_id}"},
+                "response": {
+                    "status": "200 OK",
+                    "etag": f'W/"{row.version_id}"',
+                    "lastModified": _iso_datetime(row.recorded_at),
+                },
+            }
+            for row in rows
+        ],
+    }
 
 
 def search_resources(

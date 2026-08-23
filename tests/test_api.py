@@ -51,8 +51,17 @@ def test_transaction_is_idempotent_and_versions_resources(
         "200 OK"
     }
     assert patient.json()["meta"]["versionId"] == "2"
+    assert patient.headers["etag"] == 'W/"2"'
     assert len(audit.json()) == 2
     assert "ana-souza" not in audit.text
+
+    history = client.get("/fhir/Patient/ana-souza/_history")
+    first_version = client.get("/fhir/Patient/ana-souza/_history/1")
+    assert history.status_code == 200
+    assert history.json()["type"] == "history"
+    assert history.json()["total"] == 2
+    assert first_version.status_code == 200
+    assert first_version.json()["meta"]["versionId"] == "1"
 
 
 def test_search_and_patient_timeline(client: TestClient, sample_bundle: dict) -> None:
@@ -110,3 +119,51 @@ def test_administrative_import_accepts_collection_bundle(
     assert response.status_code == 200
     assert response.json()["created"] == 9
     assert response.json()["bundle_type"] == "collection"
+
+
+def test_transaction_resolves_urn_uuid_references(client: TestClient) -> None:
+    bundle = {
+        "resourceType": "Bundle",
+        "type": "transaction",
+        "entry": [
+            {
+                "fullUrl": "urn:uuid:patient-one",
+                "resource": {"resourceType": "Patient", "id": "patient-one"},
+                "request": {"method": "PUT", "url": "Patient/patient-one"},
+            },
+            {
+                "fullUrl": "urn:uuid:observation-one",
+                "resource": {
+                    "resourceType": "Observation",
+                    "id": "observation-one",
+                    "status": "final",
+                    "subject": {"reference": "urn:uuid:patient-one"},
+                    "code": {"text": "Exame sintetico"},
+                },
+                "request": {"method": "PUT", "url": "Observation/observation-one"},
+            },
+        ],
+    }
+
+    response = client.post("/fhir", json=bundle)
+    observation = client.get("/fhir/Observation/observation-one")
+
+    assert response.status_code == 200
+    assert observation.json()["subject"]["reference"] == "Patient/patient-one"
+
+
+def test_request_url_and_if_match_enforce_transaction_semantics(
+    client: TestClient, sample_bundle: dict
+) -> None:
+    invalid_url = json.loads(json.dumps(sample_bundle))
+    invalid_url["entry"][0]["request"]["url"] = "Patient/wrong"
+    assert client.post("/fhir", json=invalid_url).status_code == 422
+
+    assert client.post("/fhir", json=sample_bundle).status_code == 200
+    stale = json.loads(json.dumps(sample_bundle))
+    stale["entry"][0]["request"]["ifMatch"] = 'W/"9"'
+    conflict = client.post("/fhir", json=stale)
+
+    assert conflict.status_code == 422
+    assert "If-Match" in conflict.text
+    assert client.get("/fhir/Patient/ana-souza").json()["meta"]["versionId"] == "1"

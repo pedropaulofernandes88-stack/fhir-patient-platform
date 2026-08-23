@@ -38,6 +38,25 @@ class FhirResource(Base):
     )
 
 
+class FhirResourceVersion(Base):
+    """Snapshot imutavel de cada versao persistida de um recurso."""
+
+    __tablename__ = "fhir_resource_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "resource_type", "resource_id", "version_id", name="uq_fhir_resource_version"
+        ),
+        Index("ix_fhir_history_identity", "resource_type", "resource_id"),
+    )
+
+    internal_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    resource_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    resource_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    version_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_events"
 

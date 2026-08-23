@@ -18,7 +18,7 @@ SUPPORTED_RESOURCE_TYPES = {
     "Procedure",
     "Immunization",
 }
-SUPPORTED_BUNDLE_TYPES = {"collection", "transaction", "batch"}
+SUPPORTED_BUNDLE_TYPES = {"collection", "transaction"}
 FHIR_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-.]{1,64}$")
 
 
@@ -37,6 +37,8 @@ class PreparedResource:
     code_value: str | None
     event_at: str | None
     payload: dict[str, Any]
+    method: str | None
+    if_match: str | None
 
 
 @dataclass(frozen=True)
@@ -161,19 +163,24 @@ def prepare_bundle(bundle: dict[str, Any]) -> PreparedBundle:
     if not isinstance(entries, list) or not entries:
         raise FhirValidationError("Bundle.entry deve conter ao menos um recurso.")
 
-    prepared: list[PreparedResource] = []
+    normalized_entries: list[tuple[dict[str, Any], str | None, str | None]] = []
     identities: set[tuple[str, str]] = set()
     full_urls: set[str] = set()
+    reference_map: dict[str, str] = {}
 
     for index, entry in enumerate(entries):
         if not isinstance(entry, dict) or not isinstance(entry.get("resource"), dict):
             raise FhirValidationError(f"Bundle.entry[{index}].resource e obrigatorio.")
-        if bundle_type in {"transaction", "batch"}:
+        method: str | None = None
+        if_match: str | None = None
+        if bundle_type == "transaction":
             request = entry.get("request")
             if not isinstance(request, dict) or request.get("method") not in {"POST", "PUT"}:
                 raise FhirValidationError(
                     f"Bundle.entry[{index}].request deve usar POST ou PUT."
                 )
+            method = request["method"]
+            if_match = request.get("ifMatch")
 
         full_url = entry.get("fullUrl")
         if isinstance(full_url, str):
@@ -198,6 +205,34 @@ def prepare_bundle(bundle: dict[str, Any]) -> PreparedBundle:
                 f"O recurso {resource_type}/{resource_id} aparece mais de uma vez no Bundle."
             )
         identities.add(identity)
+
+        if bundle_type == "transaction":
+            request_url = entry["request"].get("url")
+            expected_url = resource_type if method == "POST" else f"{resource_type}/{resource_id}"
+            if request_url != expected_url:
+                raise FhirValidationError(
+                    f"Bundle.entry[{index}].request.url deve ser {expected_url}."
+                )
+        if isinstance(full_url, str):
+            reference_map[full_url] = f"{resource_type}/{resource_id}"
+        normalized_entries.append((resource, method, if_match))
+
+    def resolve_references(value: Any) -> None:
+        if isinstance(value, dict):
+            reference = value.get("reference")
+            if isinstance(reference, str) and reference in reference_map:
+                value["reference"] = reference_map[reference]
+            for child in value.values():
+                resolve_references(child)
+        elif isinstance(value, list):
+            for child in value:
+                resolve_references(child)
+
+    prepared: list[PreparedResource] = []
+    for resource, method, if_match in normalized_entries:
+        resolve_references(resource)
+        resource_type = resource["resourceType"]
+        resource_id = resource["id"]
         code_system, code_value = coding_for(resource)
         prepared.append(
             PreparedResource(
@@ -208,6 +243,8 @@ def prepare_bundle(bundle: dict[str, Any]) -> PreparedBundle:
                 code_value=code_value,
                 event_at=event_datetime_for(resource),
                 payload=resource,
+                method=method,
+                if_match=if_match,
             )
         )
 

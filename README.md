@@ -26,7 +26,8 @@ são fictícios; em uma evolução, Bundles equivalentes também podem ser gerad
 
 - modelagem e interoperabilidade de dados clínicos com FHIR R4;
 - API REST com FastAPI e documentação OpenAPI automática;
-- transações, idempotência, versionamento e integridade referencial;
+- transações atômicas, referências `urn:uuid`, versionamento e integridade referencial;
+- histórico imutável, `vread`, ETag e controle otimista com `If-Match`;
 - persistência com SQLAlchemy e separação entre JSON canônico e índices de busca;
 - rastreabilidade por eventos de auditoria sem identificadores de pacientes;
 - testes de contrato, análise estática e CI com GitHub Actions;
@@ -66,9 +67,11 @@ Decisões e limitações estão detalhadas em
 | Método | Endpoint | Finalidade |
 | --- | --- | --- |
 | `GET` | `/fhir/metadata` | CapabilityStatement do servidor |
-| `POST` | `/fhir` | Importar Bundle `transaction` ou `batch` |
+| `POST` | `/fhir` | Importar Bundle `transaction` atômico |
 | `POST` | `/api/import` | Importar Bundle de administração |
 | `GET` | `/fhir/{tipo}/{id}` | Ler um recurso e sua versão |
+| `GET` | `/fhir/{tipo}/{id}/_history` | Consultar o histórico imutável |
+| `GET` | `/fhir/{tipo}/{id}/_history/{versão}` | Ler uma versão específica |
 | `GET` | `/fhir/{tipo}?patient=&code=` | Buscar recursos indexados |
 | `GET` | `/api/patients` | Listar pacientes para a interface |
 | `GET` | `/api/patients/{id}/timeline` | Consultar a linha do tempo |
@@ -115,8 +118,8 @@ ruff check .
 pytest -q
 ```
 
-Os testes cobrem saúde e metadados, importação idempotente, versionamento, busca,
-timeline, auditoria e rejeição de referência inválida. O workflow de CI usa ações
+Os testes cobrem saúde e metadados, atomicidade, histórico, controle de concorrência,
+resolução de UUIDs, busca, timeline, auditoria e rejeição de referência inválida. O workflow usa ações
 compatíveis com o runtime Node.js 24 dos runners atuais.
 
 ## Segurança e privacidade
@@ -126,11 +129,19 @@ entre outros controles, autenticação e autorização, TLS, segregação por in
 criptografia, consentimento, retenção, trilhas de acesso e revisão de conformidade.
 Veja [`docs/security-and-privacy.md`](docs/security-and-privacy.md).
 
+## RNDS e conformidade
+
+A aplicação é um **sandbox FHIR R4**, útil para exercitar conceitos necessários a uma
+integração com a RNDS. Ela não declara conformidade com perfis nacionais. O guia da
+RNDS adiciona perfis, extensões, terminologias, credenciamento e requisitos de
+segurança que não são validados por este MVP. A matriz de aderência e o caminho de
+evolução estão em [`docs/rnds-conformance.md`](docs/rnds-conformance.md).
+
 ## Próximas evoluções
 
 - OAuth 2.0/SMART on FHIR e autorização por escopo;
-- validação completa contra perfis e terminologias;
-- PostgreSQL, migrações e histórico imutável de versões;
+- validação oficial contra perfis e terminologias da RNDS;
+- PostgreSQL e migrações de esquema;
 - importação de uma população sintética gerada pelo Synthea;
 - métricas operacionais, paginação por links e testes de carga.
 
