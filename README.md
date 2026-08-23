@@ -1,5 +1,7 @@
 # FHIR Patient Platform
 
+[![qualidade](https://github.com/pedropaulofernandes88-stack/fhir-patient-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/pedropaulofernandes88-stack/fhir-patient-platform/actions/workflows/ci.yml)
+
 MVP de interoperabilidade em saúde que recebe registros clínicos **sintéticos** no
 padrão FHIR R4, preserva o JSON original, cria uma projeção pesquisável e apresenta
 uma linha do tempo longitudinal do paciente.
