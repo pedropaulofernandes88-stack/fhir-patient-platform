@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+message: "Se este software apoiar seu trabalho, cite-o usando estes metadados."
+title: "FHIR Patient Platform"
+type: software
+authors:
+  - family-names: "Fernandes"
+    given-names: "Pedro Paulo"
+version: 0.2.0
+date-released: 2026-08-23
+repository-code: "https://github.com/pedropaulofernandes88-stack/fhir-patient-platform"
+url: "https://github.com/pedropaulofernandes88-stack/fhir-patient-platform"
+license: MIT
+keywords: [FHIR R4, interoperabilidade, RNDS, saúde digital]

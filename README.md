@@ -111,6 +111,10 @@ O banco padrão é `data/fhir.db`. Para outro banco, configure `FHIR_DATABASE_UR
 PostgreSQL é compatível com a camada SQLAlchemy e requer a instalação do extra
 `.[postgres]`; o ambiente validado deste MVP usa SQLite.
 
+O ambiente validado está fixado em `requirements.lock`. A API também pode ser executada como
+usuário não privilegiado: `docker build -t fhir-platform .` e
+`docker run --rm -p 8000:8000 fhir-platform`.
+
 ## Qualidade
 
 ```bash
