@@ -2,6 +2,14 @@
 
 [![qualidade](https://github.com/pedropaulofernandes88-stack/fhir-patient-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/pedropaulofernandes88-stack/fhir-patient-platform/actions/workflows/ci.yml)
 
+## Demonstração ao vivo
+
+[Editar e analisar um Bundle FHIR sintético no hub IA e Dados em Saúde](https://ia-dados-saude-pedro.pedropaulofernandes8.chatgpt.site/demos/fhir-patient-platform)
+
+A demo web apresenta a estrutura do Bundle e a resolução local de referências. A API transacional,
+o histórico, ETag, auditoria, persistência e os testes de contrato completos permanecem neste
+repositório.
+
 MVP de interoperabilidade em saúde que recebe registros clínicos **sintéticos** no
 padrão FHIR R4, preserva o JSON original, cria uma projeção pesquisável e apresenta
 uma linha do tempo longitudinal do paciente.
